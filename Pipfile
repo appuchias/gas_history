@@ -6,8 +6,12 @@ name = "pypi"
 [packages]
 ipykernel = "*"
 requests = "*"
+pytz = "*"
+pydantic = "*"
 
 [dev-packages]
+mypy = "*"
+black = "*"
 
 [requires]
 python_version = "3.10"
