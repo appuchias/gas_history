@@ -4,3 +4,4 @@ venv
 __pycache__
 *.gdoc
 .dccache
+db.sqlite3
