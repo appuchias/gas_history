@@ -14,7 +14,7 @@ SLEEP_TIME = 2
 END_DATE = date.today()
 
 
-def main() -> None:
+def main(idmun: int) -> None:
     delta = timedelta(days=DAY_DELTA)
     end_date = END_DATE
     start_date = end_date - delta
@@ -32,7 +32,7 @@ def main() -> None:
 
         for single_date in daterange(start_date, end_date):
             print(f"Fetching data from {single_date}")
-            threads.append(T(target=populate_db, args=(single_date,)))
+            threads.append(T(target=populate_db, args=(single_date, idmun)))
             threads[-1].start()
 
         for thread in threads:
@@ -47,10 +47,10 @@ def main() -> None:
         sleep(SLEEP_TIME)
 
 
-def populate_db(single_date):
+def populate_db(single_date, idmun: int):
     conn = connect_db()
-    fetch_data(single_date)
-    data = get_data(conn, single_date)
+    fetch_data(single_date, idmun)
+    data = get_data(conn, single_date, idmun)
     add_prices(conn, data, single_date)
 
 
@@ -60,7 +60,7 @@ def connect_db() -> sqlite3.Connection:
     return conn
 
 
-def get_data(conn: sqlite3.Connection, single_date: date) -> list[Station]:
+def get_data(conn: sqlite3.Connection, single_date: date, idmun: int) -> list[Station]:
     """Get the data from the local file"""
     # try:
     #     with open(FILE_PATH, "r") as f:
@@ -71,7 +71,7 @@ def get_data(conn: sqlite3.Connection, single_date: date) -> list[Station]:
     #         data = json.load(f)
     # data = data["ListaEESSPrecio"]
 
-    data = fetch_data(single_date)["ListaEESSPrecio"]
+    data = fetch_data(single_date, idmun)["ListaEESSPrecio"]
     parsed_data = parse_json(data)
 
     cursor = conn.cursor()
@@ -91,7 +91,7 @@ def get_data(conn: sqlite3.Connection, single_date: date) -> list[Station]:
     return parsed_data
 
 
-def fetch_data(single_date: date, idmun: int = 2176) -> dict:
+def fetch_data(single_date: date, idmun: int) -> dict:
     """Get the data from the API and store it locally"""
 
     date_str = single_date.strftime("%d-%m-%Y")
@@ -199,6 +199,12 @@ if __name__ == "__main__":
         default=date.today(),
         help="Date to start fetching data from (YYYY-MM-DD)",
     )
+    parser.add_argument(
+        "-m" "--locality",
+        type=int,
+        default=4276,
+        help="Locality ID. See municipios.json for more info",
+    )
     args = parser.parse_args()
 
     DAY_DELTA = args.days
@@ -206,4 +212,6 @@ if __name__ == "__main__":
     SLEEP_TIME = args.sleep
     END_DATE = args.e__end_date
 
-    main()
+    idmun = args.m__locality
+
+    main(idmun)
