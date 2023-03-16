@@ -20,15 +20,17 @@ def main(idmun: int) -> None:
     start_date = end_date - delta
 
     print(
-        f"Fetching prices from {end_date} backwards {ITERATIONS} times in {DAY_DELTA} day intervals."
+        f"Fetching prices from {end_date} backwards {ITERATIONS} time(s) in {DAY_DELTA} day intervals."
     )
-    print(f"Fetching {DAY_DELTA * ITERATIONS} days.\nIt can take a while...\n- - -\n")
+    print(
+        f"Fetching a total of {DAY_DELTA * ITERATIONS} days.\nIt can take a while...\n- - -\n"
+    )
 
     # Will fetch data from end_date backwards ITERATIONS times in DAY_DELTA day intervals
     for iteration in range(ITERATIONS):
         threads = list()
 
-        print(f"Iteration {iteration + 1:02}/{ITERATIONS}")
+        print(f"Iteration {iteration + 1}/{ITERATIONS}")
 
         for single_date in daterange(start_date, end_date):
             print(f"Fetching data from {single_date}")
