@@ -45,7 +45,7 @@ def main(idmun: int) -> None:
 
         del threads
 
-        print(f"Sleeping for {SLEEP_TIME} seconds...\n- - -\n")
+        print(f"Sleeping for {SLEEP_TIME} second(s)...\n- - -\n")
         sleep(SLEEP_TIME)
 
 
