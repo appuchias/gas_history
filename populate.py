@@ -179,7 +179,7 @@ if __name__ == "__main__":
         "--days",
         type=int,
         default=15,
-        help="Number of days to fetch data from",
+        help="'block size' for querying the API.",
     )
     parser.add_argument(
         "-i",
@@ -196,13 +196,15 @@ if __name__ == "__main__":
         help="Number of seconds to sleep between iterations",
     )
     parser.add_argument(
-        "-e" "--end-date",
+        "-e",
+        "--end-date",
         type=date.fromisoformat,
         default=date.today(),
         help="Date to start fetching data from (YYYY-MM-DD)",
     )
     parser.add_argument(
-        "-m" "--locality",
+        "-m",
+        "--locality",
         type=int,
         default=4276,
         help="Locality ID. See municipios.json for more info",
@@ -212,8 +214,8 @@ if __name__ == "__main__":
     DAY_DELTA = args.days
     ITERATIONS = args.iterations
     SLEEP_TIME = args.sleep
-    END_DATE = args.e__end_date
+    END_DATE = args.end_date
 
-    idmun = args.m__locality
+    idmun = args.locality
 
     main(idmun)
