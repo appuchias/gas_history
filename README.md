@@ -5,9 +5,7 @@
 
 ## How it works
 
-You can use this to fetch the history of gas prices of a specific locality in Spain.
-
-It uses the [Spain's minetur API](https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help) to fetch the data.
+For now, it's a Python script that fetches the gas prices from the Spanish government's [API](https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help) and stores them in a SQLite database for plotting.
 
 ## Usage
 
