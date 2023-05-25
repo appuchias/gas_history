@@ -51,6 +51,8 @@ CREATE TABLE "Stations" (
 );
 ```
 
+> A sample database is included in the repo. (You'll have to rename `example.sqlite3` to `db.sqlite3`)
+
 The repo includes the file `graphs/grafana.sql` which you can use to plot `precio_gasoleo_a` and `precio_gasolina_95` in Grafana.
 There are also some lower quality sample graphs in `graphs/*.png`.
 
