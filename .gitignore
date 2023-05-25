@@ -5,3 +5,5 @@ __pycache__
 *.code-workspace
 .dccache
 db.sqlite3
+responses/
+responses.tar
