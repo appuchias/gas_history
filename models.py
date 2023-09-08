@@ -3,7 +3,7 @@ from datetime import date
 
 
 @dataclass
-class Station:
+class APIGasStation:
     ideess: str
     rotulo: str
     c_p_: str
@@ -20,7 +20,7 @@ class Station:
 
     def __str__(self):
         short_address = " ".join(self.direccion.split()[:2])
-        return f"{self.rotulo} {short_address}"
+        return f"{self.ideess} - {self.rotulo} {short_address}"
 
     def as_sql_station(self) -> tuple:
         return (

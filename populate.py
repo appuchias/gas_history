@@ -3,7 +3,7 @@ import requests, sqlite3
 from threading import Thread as T
 from time import sleep
 
-from models import Station
+from models import APIGasStation
 
 BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
 FILE_PATH = "response.json"
@@ -51,9 +51,10 @@ def main(idmun: int) -> None:
 
 def populate_db(single_date, idmun: int):
     conn = connect_db()
-    fetch_data(single_date, idmun)
-    data = get_data(conn, single_date, idmun)
-    add_prices(conn, data, single_date)
+    data = parse_json(fetch_data(single_date, idmun)["ListaEESSPrecio"])
+
+    save_stations(conn, data)
+    save_prices(conn, data, single_date)
 
 
 def connect_db() -> sqlite3.Connection:
@@ -62,19 +63,8 @@ def connect_db() -> sqlite3.Connection:
     return conn
 
 
-def get_data(conn: sqlite3.Connection, single_date: date, idmun: int) -> list[Station]:
-    """Get the data from the local file"""
-    # try:
-    #     with open(FILE_PATH, "r") as f:
-    #         data = json.load(f)
-    # except FileNotFoundError:
-    #     fetch_data(date)
-    #     with open(FILE_PATH, "r") as f:
-    #         data = json.load(f)
-    # data = data["ListaEESSPrecio"]
-
-    data = fetch_data(single_date, idmun)["ListaEESSPrecio"]
-    parsed_data = parse_json(data)
+def save_stations(conn: sqlite3.Connection, parsed_data: list[APIGasStation]) -> None:
+    """Add the stations to the database"""
 
     cursor = conn.cursor()
 
@@ -90,17 +80,12 @@ def get_data(conn: sqlite3.Connection, single_date: date, idmun: int) -> list[St
 
         conn.commit()
 
-    return parsed_data
-
 
 def fetch_data(single_date: date, idmun: int) -> dict:
     """Get the data from the API and store it locally"""
 
     date_str = single_date.strftime("%d-%m-%Y")
     response = requests.get(f"{BASE_URL}/FiltroMunicipio/{date_str}/{idmun}")
-
-    # with open(FILE_PATH, "w") as f:
-    #     json.dump(response.json(), f)
 
     return response.json()
 
@@ -116,7 +101,7 @@ def get_stations(conn: sqlite3.Connection) -> list:
     return stations
 
 
-def add_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None:
+def save_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None:
     """Add the prices to the database"""
 
     cursor = conn.cursor()
@@ -135,7 +120,7 @@ def add_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None:
     print(f"Prices for {single_date} added to the database")
 
 
-def parse_json(data: list) -> list[Station]:
+def parse_json(data: list) -> list[APIGasStation]:
     """Parse the data from the API"""
 
     str_to_price = (
@@ -145,7 +130,7 @@ def parse_json(data: list) -> list[Station]:
     parsed_data = []
     for station in data:
         parsed_data.append(
-            Station(
+            APIGasStation(
                 ideess=station["IDEESS"],
                 rotulo=station["Rótulo"],
                 c_p_=station["C.P."],
@@ -186,7 +171,7 @@ if __name__ == "__main__":
         "--iterations",
         type=int,
         default=10,
-        help="Number of iterations to fetch data",
+        help="Number of 'blocks' to fetch",
     )
     parser.add_argument(
         "-s",
@@ -200,13 +185,13 @@ if __name__ == "__main__":
         "--end-date",
         type=date.fromisoformat,
         default=date.today(),
-        help="Date to start fetching data from (YYYY-MM-DD)",
+        help="Mos recent day to fetch (YYYY-MM-DD)",
     )
     parser.add_argument(
         "-m",
         "--locality",
         type=int,
-        default=4276,
+        default=2196,
         help="Locality ID. See municipios.json for more info",
     )
     args = parser.parse_args()
