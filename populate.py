@@ -1,93 +1,88 @@
 from datetime import date, timedelta
-import requests, sqlite3
+import json, lzma, os, requests, sqlite3
+from math import ceil
 from threading import Thread as T
 from time import sleep
 
+from extras import daterange
 from models import APIGasStation
 
 BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
-FILE_PATH = "response.json"
-GET_QUERY = "SELECT ideess, company, cp, address FROM stations"
-DAY_DELTA = 20
-ITERATIONS = 60
-SLEEP_TIME = 2
+FILES_PATH = "responses/"
+DAY_COUNT = 1200
 END_DATE = date.today()
+STORE = True
+
+THREADS = 30
+THREADS_THROTTLE = 1 / 3 * THREADS
 
 
 def main(idmun: int) -> None:
-    delta = timedelta(days=DAY_DELTA)
     end_date = END_DATE
-    start_date = end_date - delta
+    start_date = end_date - timedelta(days=DAY_COUNT)
 
-    print(
-        f"Fetching prices from {end_date} backwards {ITERATIONS} time(s) in {DAY_DELTA} day intervals."
-    )
-    print(
-        f"Fetching a total of {DAY_DELTA * ITERATIONS} days.\nIt can take a while...\n- - -\n"
-    )
+    print(f"Fetching prices from {end_date} backwards {DAY_COUNT} days.")
 
-    # Will fetch data from end_date backwards ITERATIONS times in DAY_DELTA day intervals
-    for iteration in range(ITERATIONS):
-        threads = list()
+    threads = list()
+    for current_date in daterange(start_date, end_date):
+        if os.path.exists(FILES_PATH + f"_{current_date}.json.xz"):
+            print(f"Skipping {current_date}")
+            continue
 
-        print(f"Iteration {iteration + 1}/{ITERATIONS}")
+        # Rate limit
+        thread_count = len(threads)
+        if thread_count >= THREADS:
+            threads.pop(0).join()
+        elif thread_count >= THREADS_THROTTLE:
+            sleep(thread_count / THREADS)
 
-        for single_date in daterange(start_date, end_date):
-            print(f"Fetching data from {single_date}")
-            threads.append(T(target=populate_db, args=(single_date, idmun)))
-            threads[-1].start()
+        print(f"Fetching data from {current_date}")
+        threads.append(T(target=populate_db, args=(current_date, idmun)))
+        threads[-1].start()
+        sleep(0.1)
 
-        for thread in threads:
-            thread.join()
-
-        start_date -= delta
-        end_date -= delta
-
-        del threads
-
-        print(f"Sleeping for {SLEEP_TIME} second(s)...\n- - -\n")
-        sleep(SLEEP_TIME)
+    # Wait for all threads to finish
+    for thread in threads:
+        thread.join()
 
 
 def populate_db(single_date, idmun: int):
     conn = connect_db()
-    data = parse_json(fetch_data(single_date, idmun)["ListaEESSPrecio"])
+    data = fetch_data(single_date, idmun)
 
-    save_stations(conn, data)
-    save_prices(conn, data, single_date)
+    if STORE:
+        parsed_data = parse_json(data["ListaEESSPrecio"])
 
-
-def connect_db() -> sqlite3.Connection:
-    """Connect to the database"""
-    conn = sqlite3.connect("db.sqlite3")
-    return conn
+        save_stations(conn, parsed_data)
+        save_prices(conn, parsed_data, single_date)
 
 
-def save_stations(conn: sqlite3.Connection, parsed_data: list[APIGasStation]) -> None:
-    """Add the stations to the database"""
+def fetch_data(single_date: date, idmun: int = 0) -> dict:
+    """
+    Get the data from the API and store it locally.
+    Provide `idmun` to filter by locality
+    """
 
-    cursor = conn.cursor()
+    response_folder = f"{FILES_PATH}{idmun}{'/' if idmun else ''}"
+    response_path = f"{response_folder}{single_date}.json.xz"
 
-    if not len(cursor.execute(GET_QUERY).fetchall()):
-        for station in parsed_data:
-            try:
-                cursor.execute(
-                    "INSERT INTO stations VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    station.as_sql_station(),
-                )
-            except sqlite3.IntegrityError:
-                print(f"Station {station} was already in the database")
+    if not os.path.isdir(response_folder):
+        os.mkdir(response_folder)
 
-        conn.commit()
+    if not os.path.exists(response_path):
+        date_str = single_date.strftime("%d-%m-%Y")
+        if idmun:
+            response = requests.get(f"{BASE_URL}/FiltroMunicipio/{date_str}/{idmun}")
+        else:
+            response = requests.get(f"{BASE_URL}/{date_str}")
 
+        with lzma.open(response_path, "w") as f:
+            f.write(response.text.encode("utf-8"))
 
-def fetch_data(single_date: date, idmun: int) -> dict:
-    """Get the data from the API and store it locally"""
+        return response.json()
 
-    date_str = single_date.strftime("%d-%m-%Y")
-    response = requests.get(f"{BASE_URL}/FiltroMunicipio/{date_str}/{idmun}")
-
-    return response.json()
+    with lzma.open(response_path) as f:
+        return json.load(f)
 
 
 def get_stations(conn: sqlite3.Connection) -> list:
@@ -95,10 +90,37 @@ def get_stations(conn: sqlite3.Connection) -> list:
 
     # Get the stations from the database
     cursor = conn.cursor()
-    cursor.execute(GET_QUERY)
+    cursor.execute("SELECT ideess, company, cp, address FROM stations")
     stations = cursor.fetchall()
 
     return stations
+
+
+def save_stations(conn: sqlite3.Connection, parsed_data: list[APIGasStation]) -> None:
+    """Add the stations to the database"""
+
+    cursor = conn.cursor()
+
+    ids = [station.ideess for station in parsed_data]
+    cursor.execute(
+        f"SELECT ideess FROM stations WHERE ideess IN ({','.join('?' * len(ids))})",
+        ids,
+    )
+    existing_ids = [i[0] for i in cursor.fetchall()]
+
+    for station in parsed_data:
+        if int(station.ideess) in existing_ids:
+            continue
+
+        try:
+            cursor.execute(
+                "INSERT INTO stations VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                station.as_sql_station(),
+            )
+        except sqlite3.IntegrityError:
+            print(f"Station {station} was already in the database")
+
+    conn.commit()
 
 
 def save_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None:
@@ -114,6 +136,13 @@ def save_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None
             )
         except sqlite3.IntegrityError:
             print(f"Price already in DB [{single_date} {str(station)}]")
+        except sqlite3.OperationalError:  # DB locked
+            print("DB locked. Waiting 1s...")
+            sleep(1)
+            cursor.execute(
+                "INSERT INTO prices VALUES (?, ?, ?, ?, ?, ?, ?)",
+                station.as_sql_prices(single_date),
+            )
 
     conn.commit()
 
@@ -155,6 +184,12 @@ def daterange(start_date, end_date):
         yield start_date + timedelta(days=n)
 
 
+def connect_db() -> sqlite3.Connection:
+    """Connect to the database"""
+    conn = sqlite3.connect("db.sqlite3")
+    return conn
+
+
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
@@ -167,40 +202,29 @@ if __name__ == "__main__":
         help="'block size' for querying the API.",
     )
     parser.add_argument(
-        "-i",
-        "--iterations",
-        type=int,
-        default=10,
-        help="Number of 'blocks' to fetch",
-    )
-    parser.add_argument(
-        "-s",
-        "--sleep",
-        type=int,
-        default=5,
-        help="Number of seconds to sleep between iterations",
-    )
-    parser.add_argument(
         "-e",
         "--end-date",
         type=date.fromisoformat,
         default=date.today(),
-        help="Mos recent day to fetch (YYYY-MM-DD)",
+        help="Most recent day to fetch (YYYY-MM-DD)",
     )
     parser.add_argument(
-        "-m",
+        "-l",
         "--locality",
         type=int,
-        default=2196,
+        default=0,
         help="Locality ID. See municipios.json for more info",
+    )
+    parser.add_argument(
+        "-s",
+        "--store",
+        action="store_true",
+        help="Store the data in the DB. If not specified, data will only be downloaded",
     )
     args = parser.parse_args()
 
-    DAY_DELTA = args.days
-    ITERATIONS = args.iterations
-    SLEEP_TIME = args.sleep
+    DAY_COUNT = args.days
     END_DATE = args.end_date
+    STORE = args.store
 
-    idmun = args.locality
-
-    main(idmun)
+    main(args.locality)
