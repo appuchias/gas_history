@@ -4,7 +4,6 @@ from math import ceil
 from threading import Thread as T
 from time import sleep
 
-from extras import daterange
 from models import APIGasStation
 
 BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
