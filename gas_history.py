@@ -1,30 +1,25 @@
 from datetime import date, timedelta
 import json, lzma, os, requests, sqlite3
-from math import ceil
+from pathlib import Path
 from threading import Thread as T
 from time import sleep
 
 from models import APIGasStation
 
-BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
-FILES_PATH = "responses/"
-DAY_COUNT = 1200
-END_DATE = date.today()
-STORE = True
-
-THREADS = 30
-THREADS_THROTTLE = 1 / 3 * THREADS
+API_BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
+FILES_PATH = Path("responses")
 
 
 def main(idmun: int) -> None:
     end_date = END_DATE
     start_date = end_date - timedelta(days=DAY_COUNT)
+    response_folder = FILES_PATH / str(idmun) if idmun else FILES_PATH
 
     print(f"Fetching prices from {end_date} backwards {DAY_COUNT} days.")
 
     threads = list()
     for current_date in daterange(start_date, end_date):
-        if os.path.exists(FILES_PATH + f"_{current_date}.json.xz"):
+        if not STORE and os.path.exists(response_folder / f"{current_date}.json.xz"):
             print(f"Skipping {current_date}")
             continue
 
@@ -62,8 +57,8 @@ def fetch_data(single_date: date, idmun: int = 0) -> dict:
     Provide `idmun` to filter by locality
     """
 
-    response_folder = f"{FILES_PATH}{idmun}{'/' if idmun else ''}"
-    response_path = f"{response_folder}{single_date}.json.xz"
+    response_folder = FILES_PATH / str(idmun) if idmun else FILES_PATH
+    response_path = response_folder / f"{single_date}.json.xz"
 
     if not os.path.isdir(response_folder):
         os.mkdir(response_folder)
@@ -71,9 +66,11 @@ def fetch_data(single_date: date, idmun: int = 0) -> dict:
     if not os.path.exists(response_path):
         date_str = single_date.strftime("%d-%m-%Y")
         if idmun:
-            response = requests.get(f"{BASE_URL}/FiltroMunicipio/{date_str}/{idmun}")
+            response = requests.get(
+                f"{API_BASE_URL}/FiltroMunicipio/{date_str}/{idmun}"
+            )
         else:
-            response = requests.get(f"{BASE_URL}/{date_str}")
+            response = requests.get(f"{API_BASE_URL}/{date_str}")
 
         with lzma.open(response_path, "w") as f:
             f.write(response.text.encode("utf-8"))
@@ -215,6 +212,13 @@ if __name__ == "__main__":
         help="Locality ID. See municipios.json for more info",
     )
     parser.add_argument(
+        "-t",
+        "--threads",
+        type=int,
+        default=30,
+        help="Number of threads to use for fetching data",
+    )
+    parser.add_argument(
         "-s",
         "--store",
         action="store_true",
@@ -224,6 +228,8 @@ if __name__ == "__main__":
 
     DAY_COUNT = args.days
     END_DATE = args.end_date
+    THREADS = args.threads
+    THREADS_THROTTLE = 1 / 3 * THREADS
     STORE = args.store
 
     main(args.locality)
