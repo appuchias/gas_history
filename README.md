@@ -24,20 +24,6 @@ Where
 It expects a SQLite database (`db.sqlite3`) with the following tables:
 
 ```sql
-CREATE TABLE "Prices" (
- "ideess" INTEGER NOT NULL,
- "date" TEXT NOT NULL,
- "precio_gasoleo_a" REAL,
- "precio_gasoleo_b" REAL,
- "precio_gasolina_95" REAL,
- "precio_gasolina_98" REAL,
- "glp" REAL,
- FOREIGN KEY("ideess") REFERENCES "Stations"("ideess"),
- PRIMARY KEY("ideess","date")
-);
-```
-
-```sql
 CREATE TABLE "Stations" (
  "ideess" INTEGER NOT NULL UNIQUE,
  "company" TEXT,
@@ -48,6 +34,20 @@ CREATE TABLE "Stations" (
  "locality" TEXT,
  "province" TEXT,
  PRIMARY KEY("ideess")
+);
+```
+
+```sql
+CREATE TABLE "Prices" (
+ "ideess" INTEGER NOT NULL,
+ "date" TEXT NOT NULL,
+ "precio_gasoleo_a" REAL,
+ "precio_gasoleo_b" REAL,
+ "precio_gasolina_95" REAL,
+ "precio_gasolina_98" REAL,
+ "glp" REAL,
+ FOREIGN KEY("ideess") REFERENCES "Stations"("ideess"),
+ PRIMARY KEY("ideess","date")
 );
 ```
 
