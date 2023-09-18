@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-import json, lzma, os, requests, sqlite3
+import json, lzma, logging, os, random, requests, sqlite3
 from pathlib import Path
 from threading import Thread as T
 from time import sleep
@@ -9,18 +9,20 @@ from models import APIGasStation
 API_BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
 FILES_PATH = Path("responses")
 
+logging.basicConfig(level=logging.INFO)
+
 
 def main(idmun: int) -> None:
     end_date = END_DATE
     start_date = end_date - timedelta(days=DAY_COUNT)
     response_folder = FILES_PATH / str(idmun) if idmun else FILES_PATH
 
-    print(f"Fetching prices from {end_date} backwards {DAY_COUNT} days.")
+    logging.debug(f"Fetching prices from {end_date} backwards {DAY_COUNT} days.")
 
     threads = list()
     for current_date in daterange(start_date, end_date):
         if not STORE and os.path.exists(response_folder / f"{current_date}.json.xz"):
-            print(f"Skipping {current_date}")
+            logging.debug(f"Skipping {current_date}")
             continue
 
         # Rate limit
@@ -30,7 +32,7 @@ def main(idmun: int) -> None:
         elif thread_count >= THREADS_THROTTLE:
             sleep(thread_count / THREADS)
 
-        print(f"Fetching data from {current_date}")
+        logging.debug(f"Fetching data from {current_date}")
         threads.append(T(target=populate_db, args=(current_date, idmun)))
         threads[-1].start()
         sleep(0.1)
@@ -104,17 +106,27 @@ def save_stations(conn: sqlite3.Connection, parsed_data: list[APIGasStation]) ->
     )
     existing_ids = [i[0] for i in cursor.fetchall()]
 
-    for station in parsed_data:
-        if int(station.ideess) in existing_ids:
-            continue
+    stations = [
+        station.as_sql_station()
+        for station in parsed_data
+        if station.ideess not in existing_ids
+    ]
 
+    attempts = 1
+    while attempts:
         try:
-            cursor.execute(
-                "INSERT INTO stations VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                station.as_sql_station(),
+            cursor.executemany(
+                "INSERT INTO stations VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                stations,
             )
-        except sqlite3.IntegrityError:
-            print(f"Station {station} was already in the database")
+            break
+        except sqlite3.OperationalError:
+            delay = 2**attempts * random.random()  # "Exponential backoff"
+            logging.warning(
+                f"Database locked (#{attempts}), retrying in {delay} seconds..."
+            )
+            sleep(delay)
+            attempts += 1
 
     conn.commit()
 
@@ -124,25 +136,27 @@ def save_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None
 
     cursor = conn.cursor()
 
-    for station in data:
+    stations = [station.as_sql_prices(single_date) for station in data]
+
+    attempts = 1
+    while attempts:
         try:
-            cursor.execute(
-                "INSERT INTO prices VALUES (?, ?, ?, ?, ?, ?, ?)",
-                station.as_sql_prices(single_date),
+            cursor.executemany(
+                "INSERT INTO prices VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                stations,
             )
-        except sqlite3.IntegrityError:
-            print(f"Price already in DB [{single_date} {str(station)}]")
-        except sqlite3.OperationalError:  # DB locked
-            print("DB locked. Waiting 1s...")
-            sleep(1)
-            cursor.execute(
-                "INSERT INTO prices VALUES (?, ?, ?, ?, ?, ?, ?)",
-                station.as_sql_prices(single_date),
+            break
+        except sqlite3.OperationalError:
+            delay = 2**attempts * random.random()  # "Exponential backoff"
+            logging.warning(
+                f"Database locked (#{attempts}), retrying in {delay} seconds..."
             )
+            sleep(delay)
+            attempts += 1
 
     conn.commit()
 
-    print(f"Prices for {single_date} added to the database")
+    logging.info(f"Prices for {single_date} added to the database")
 
 
 def parse_json(data: list) -> list[APIGasStation]:
