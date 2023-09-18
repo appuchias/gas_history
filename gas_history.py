@@ -215,7 +215,7 @@ if __name__ == "__main__":
         "-t",
         "--threads",
         type=int,
-        default=30,
+        default=10,
         help="Number of threads to use for fetching data",
     )
     parser.add_argument(

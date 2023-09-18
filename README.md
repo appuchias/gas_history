@@ -5,21 +5,21 @@
 
 ## How it works
 
-For now, it's a Python script that fetches the gas prices from the Spanish government's [API](https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help) and stores them in a SQLite database for plotting.
+For now, it's a Python script that fetches the gas prices from the Spanish government's [API](https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/help) and stores them in a SQLite database for plotting purposes.
 
 ## Usage
 
 ```bash
-python populate.py [-h] [-d DAYS] [-i ITERATIONS] [-s SLEEP] [-e END_DATE] [-m LOCALITY]
+python gas_history.py [-h] [-d DAYS] [-e END_DATE] [-l LOCALITY] [-t THREADS] [-s]
 ```
 
 Where
 
 - `DAYS`: Number of days to query in each iteration. Default is 15. Max is around 30 in my experience.
-- `ITERATIONS`: Number of iterations to do. Default is 10.
-- `SLEEP`: Number of seconds to sleep between iterations. Default is 5.
 - `END_DATE`: Date to start fetching data from. Default is today.
 - `LOCALITY`: Locality ID. See `municipios.json` for more info. (CTRL+F will help you)
+- `THREADS`: Number of threads to use. Default is 10. Increasing this number can break the script if you specify -s.
+- Specify `-s` to store downloaded data in the database.
 
 It expects a SQLite database (`db.sqlite3`) with the following tables:
 
