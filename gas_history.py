@@ -1,9 +1,9 @@
 from datetime import date, timedelta
-import json, lzma, logging, os, random, requests, sqlite3
+import json, lzma, logging, os, requests
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from time import sleep
 
+from db import DBConnection
 from models import APIGasStation
 
 API_BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
@@ -14,34 +14,35 @@ logging.basicConfig(level=logging.INFO)
 
 
 def main(idmun: int) -> None:
-    end_date = END_DATE
-    start_date = end_date - timedelta(days=DAY_COUNT)
+    """Main function"""
+
+    start_date = END_DATE - timedelta(days=DAY_COUNT)
     response_folder = FILES_PATH / str(idmun) if idmun else FILES_PATH
 
-    logging.debug(f"Fetching prices from {end_date} backwards {DAY_COUNT} days.")
+    logging.debug(f"Fetching prices from {END_DATE} backwards {DAY_COUNT} days.")
 
     with ThreadPoolExecutor(max_workers=THREADS) as executor:
-        executors = {}
-        for current_date in daterange(start_date, end_date):
+        for current_date in daterange(start_date, END_DATE):
             if not STORE and os.path.exists(
                 response_folder / f"{current_date}.json.xz"
             ):
                 logging.debug(f"Skipping {current_date}")
                 continue
 
-            logging.debug(f"Fetching data from {current_date}")
-            executors[executor.submit(populate_db, current_date, idmun)] = current_date
+            executor.submit(populate_db, current_date, idmun)
 
 
 def populate_db(single_date, idmun: int):
-    conn = connect_db()
+    db = DBConnection(DB_PATH)
+    logging.debug(f"Fetching data from {single_date}")
+
     data = fetch_data(single_date, idmun)
 
     if STORE:
         parsed_data = parse_json(data["ListaEESSPrecio"])
 
-        save_stations(conn, parsed_data)
-        save_prices(conn, parsed_data, single_date)
+        db.save_stations(parsed_data)
+        db.save_prices(parsed_data, single_date)
 
 
 def fetch_data(single_date: date, idmun: int = 0) -> dict:
@@ -72,78 +73,6 @@ def fetch_data(single_date: date, idmun: int = 0) -> dict:
 
     with lzma.open(response_path) as f:
         return json.load(f)
-
-
-def get_stations(conn: sqlite3.Connection) -> list:
-    """Get the stations from the database"""
-
-    # Get the stations from the database
-    cursor = conn.cursor()
-    cursor.execute("SELECT ideess, company, cp, address FROM stations")
-    stations = cursor.fetchall()
-
-    return stations
-
-
-def save_stations(conn: sqlite3.Connection, parsed_data: list[APIGasStation]) -> None:
-    """Add the stations to the database"""
-
-    cursor = conn.cursor()
-
-    ids = [station.ideess for station in parsed_data]
-    cursor.execute(
-        f"SELECT ideess FROM stations WHERE ideess IN ({','.join('?' * len(ids))})",
-        ids,
-    )
-    existing_ids = [i[0] for i in cursor.fetchall()]
-
-    stations = [
-        station.as_sql_station()
-        for station in parsed_data
-        if station.ideess not in existing_ids
-    ]
-
-    attempts = 1
-    while attempts:
-        try:
-            cursor.executemany(
-                "INSERT INTO stations VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-                stations,
-            )
-            conn.commit()
-            break
-        except sqlite3.OperationalError:
-            delay = 2**attempts * random.random()  # "Exponential backoff"
-            logging.warning(
-                f"Database locked (#{attempts}), retrying in {delay} seconds..."
-            )
-            sleep(delay)
-            attempts += 1
-
-
-def save_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None:
-    """Add the prices to the database"""
-
-    cursor = conn.cursor()
-
-    stations = [station.as_sql_prices(single_date) for station in data]
-
-    attempts = 1
-    while attempts:
-        try:
-            cursor.executemany(
-                "INSERT INTO prices VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-                stations,
-            )
-            conn.commit()
-            break
-        except sqlite3.OperationalError:
-            delay = 2**attempts * random.random()  # "Exponential backoff"
-            logging.warning(f"Database locked (#{attempts}), retrying in {delay:.3f}s")
-            sleep(delay)
-            attempts += 1
-
-    logging.info(f"Prices for {single_date} added to the database")
 
 
 def parse_json(data: list) -> list[APIGasStation]:
@@ -181,12 +110,6 @@ def daterange(start_date, end_date):
 
     for n in range(int((end_date - start_date).days + 1)):
         yield start_date + timedelta(days=n)
-
-
-def connect_db() -> sqlite3.Connection:
-    """Connect to the database"""
-    conn = sqlite3.connect(DB_PATH)
-    return conn
 
 
 if __name__ == "__main__":
