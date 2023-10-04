@@ -8,6 +8,7 @@ from models import APIGasStation
 
 API_BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
 FILES_PATH = Path("responses")
+DB_PATH = Path("db.sqlite3")
 
 logging.basicConfig(level=logging.INFO)
 
@@ -19,7 +20,7 @@ def main(idmun: int) -> None:
 
     logging.debug(f"Fetching prices from {end_date} backwards {DAY_COUNT} days.")
 
-    threads = list()
+    threads: list[T] = list()
     for current_date in daterange(start_date, end_date):
         if not STORE and os.path.exists(response_folder / f"{current_date}.json.xz"):
             logging.debug(f"Skipping {current_date}")
@@ -119,6 +120,7 @@ def save_stations(conn: sqlite3.Connection, parsed_data: list[APIGasStation]) ->
                 "INSERT INTO stations VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 stations,
             )
+            conn.commit()
             break
         except sqlite3.OperationalError:
             delay = 2**attempts * random.random()  # "Exponential backoff"
@@ -127,8 +129,6 @@ def save_stations(conn: sqlite3.Connection, parsed_data: list[APIGasStation]) ->
             )
             sleep(delay)
             attempts += 1
-
-    conn.commit()
 
 
 def save_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None:
@@ -145,16 +145,13 @@ def save_prices(conn: sqlite3.Connection, data: list, single_date: date) -> None
                 "INSERT INTO prices VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 stations,
             )
+            conn.commit()
             break
         except sqlite3.OperationalError:
             delay = 2**attempts * random.random()  # "Exponential backoff"
-            logging.warning(
-                f"Database locked (#{attempts}), retrying in {delay} seconds..."
-            )
+            logging.warning(f"Database locked (#{attempts}), retrying in {delay:.3f}s")
             sleep(delay)
             attempts += 1
-
-    conn.commit()
 
     logging.info(f"Prices for {single_date} added to the database")
 
@@ -190,13 +187,15 @@ def parse_json(data: list) -> list[APIGasStation]:
 
 
 def daterange(start_date, end_date):
-    for n in range(int((end_date - start_date).days)):
+    """Returns a generator for dates between both arguments, including both"""
+
+    for n in range(int((end_date - start_date).days + 1)):
         yield start_date + timedelta(days=n)
 
 
 def connect_db() -> sqlite3.Connection:
     """Connect to the database"""
-    conn = sqlite3.connect("db.sqlite3")
+    conn = sqlite3.connect(DB_PATH)
     return conn
 
 
@@ -238,6 +237,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Store the data in the DB. If not specified, data will only be downloaded",
     )
+    parser.add_argument(
+        "-p",
+        "--db-path",
+        type=Path,
+        default=DB_PATH,
+        help="The path to the database file where to store the prices",
+    )
     args = parser.parse_args()
 
     DAY_COUNT = args.days
@@ -245,5 +251,6 @@ if __name__ == "__main__":
     THREADS = args.threads
     THREADS_THROTTLE = 1 / 3 * THREADS
     STORE = args.store
+    DB_PATH = args.db_path
 
     main(args.locality)
