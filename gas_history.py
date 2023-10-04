@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 import json, lzma, logging, os, random, requests, sqlite3
 from pathlib import Path
-from threading import Thread as T
+from concurrent.futures import ThreadPoolExecutor
 from time import sleep
 
 from models import APIGasStation
@@ -20,27 +20,17 @@ def main(idmun: int) -> None:
 
     logging.debug(f"Fetching prices from {end_date} backwards {DAY_COUNT} days.")
 
-    threads: list[T] = list()
-    for current_date in daterange(start_date, end_date):
-        if not STORE and os.path.exists(response_folder / f"{current_date}.json.xz"):
-            logging.debug(f"Skipping {current_date}")
-            continue
+    with ThreadPoolExecutor(max_workers=THREADS) as executor:
+        executors = {}
+        for current_date in daterange(start_date, end_date):
+            if not STORE and os.path.exists(
+                response_folder / f"{current_date}.json.xz"
+            ):
+                logging.debug(f"Skipping {current_date}")
+                continue
 
-        # Rate limit
-        thread_count = len(threads)
-        if thread_count >= THREADS:
-            threads.pop(0).join()
-        elif thread_count >= THREADS_THROTTLE:
-            sleep(thread_count / THREADS)
-
-        logging.debug(f"Fetching data from {current_date}")
-        threads.append(T(target=populate_db, args=(current_date, idmun)))
-        threads[-1].start()
-        sleep(0.1)
-
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
+            logging.debug(f"Fetching data from {current_date}")
+            executors[executor.submit(populate_db, current_date, idmun)] = current_date
 
 
 def populate_db(single_date, idmun: int):
@@ -249,8 +239,7 @@ if __name__ == "__main__":
     DAY_COUNT = args.days
     END_DATE = args.end_date
     THREADS = args.threads
-    THREADS_THROTTLE = 1 / 3 * THREADS
     STORE = args.store
-    DB_PATH = args.db_path
+    DB_PATH = Path(args.db_path)
 
     main(args.locality)
