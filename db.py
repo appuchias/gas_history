@@ -67,7 +67,7 @@ class DBConnection:
             except sqlite3.OperationalError:
                 delay = 2**attempts * random.random()
                 logger.warning(
-                    f"Database locked (#{attempts}), retrying in {delay:.3f} seconds..."
+                    f"Database locked (#{attempts}), retrying in {delay:.3f} seconds"
                 )
                 sleep(delay)
                 attempts += 1
@@ -103,7 +103,7 @@ class DBConnection:
             except sqlite3.OperationalError:
                 delay = 2**attempts * random.random()
                 logger.warning(
-                    f"Database locked (#{attempts}), retrying in {delay:.3f}s"
+                    f"Database locked (#{attempts}), retrying in {delay:.3f} seconds"
                 )
                 sleep(delay)
                 attempts += 1
