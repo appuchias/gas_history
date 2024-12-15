@@ -166,6 +166,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    assert args.days > 0, "Days must be a positive integer"
+    assert args.workers > 0, "Workers must be a positive integer"
+
     DAY_COUNT = args.days
     END_DATE = args.end_date
     WORKERS = args.workers
