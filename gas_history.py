@@ -1,7 +1,9 @@
+#!/usr/bin/env python3
+
 from datetime import date, timedelta
 import json, lzma, logging, os, requests
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Pool
 
 from db import DBConnection
 from models import APIGasStation
@@ -21,7 +23,7 @@ def main(idmun: int) -> None:
 
     logging.debug(f"Fetching prices from {END_DATE} backwards {DAY_COUNT} days.")
 
-    with ThreadPoolExecutor(max_workers=THREADS) as executor:
+    with Pool(WORKERS) as executor:
         for current_date in daterange(start_date, END_DATE):
             if not STORE and os.path.exists(
                 response_folder / f"{current_date}.json.xz"
@@ -29,7 +31,12 @@ def main(idmun: int) -> None:
                 logging.debug(f"Skipping {current_date}")
                 continue
 
-            executor.submit(populate_db, current_date, idmun)
+            executor.apply_async(populate_db, (current_date, idmun))
+
+        executor.close()
+        print("[·] All tasks submitted. Waiting for completion...")
+        executor.join()
+        print("[✓] All tasks completed.")
 
 
 def populate_db(single_date, idmun: int):
@@ -138,11 +145,11 @@ if __name__ == "__main__":
         help="Locality ID. See municipios.json for more info",
     )
     parser.add_argument(
-        "-t",
-        "--threads",
+        "-w",
+        "--workers",
         type=int,
         default=10,
-        help="Number of threads to use for fetching data",
+        help="Number of workers to use for fetching data",
     )
     parser.add_argument(
         "-s",
@@ -161,8 +168,13 @@ if __name__ == "__main__":
 
     DAY_COUNT = args.days
     END_DATE = args.end_date
-    THREADS = args.threads
+    WORKERS = args.workers
     STORE = args.store
     DB_PATH = Path(args.db_path)
+
+    print(
+        f"Fetching {DAY_COUNT} days of data up to {END_DATE} using {WORKERS} workers."
+    )
+    print(f"Storing data in {DB_PATH}" if STORE else "Not storing data in the DB")
 
     main(args.locality)
