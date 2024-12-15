@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from datetime import date, timedelta
-import json, lzma, logging, os, requests
+import json, pyzstd, logging, os, requests
 from pathlib import Path
 from multiprocessing import Pool
 
@@ -11,7 +11,7 @@ from models import APIGasStation
 API_BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
 FILES_PATH = Path("responses")
 DB_PATH = Path("db.sqlite3")
-EXTENSION = ".json.xz"
+EXTENSION = ".json.zst"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -74,12 +74,12 @@ def fetch_data(single_date: date, idmun: int = 0) -> dict:
         else:
             response = requests.get(f"{API_BASE_URL}/{date_str}")
 
-        with lzma.open(response_path, "w") as f:
+        with pyzstd.open(response_path, "w", level_or_option=12) as f:
             f.write(response.text.encode("utf-8"))
 
         return response.json()
 
-    with lzma.open(response_path) as f:
+    with pyzstd.open(response_path) as f:
         return json.load(f)
 
 
