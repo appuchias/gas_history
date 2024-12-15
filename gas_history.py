@@ -86,9 +86,8 @@ def fetch_data(single_date: date, idmun: int = 0) -> dict:
 def parse_json(data: list) -> list[APIGasStation]:
     """Parse the data from the API"""
 
-    str_to_price = lambda price: (
-        float(price.replace(",", ".")) if len(price) > 0 else 0.0
-    )
+    def str_to_price(price):
+        return float(price.replace(",", ".")) if len(price) > 0 else 0.0
 
     parsed_data = []
     for station in data:
