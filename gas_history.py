@@ -11,6 +11,7 @@ from models import APIGasStation
 API_BASE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestresHist/"
 FILES_PATH = Path("responses")
 DB_PATH = Path("db.sqlite3")
+EXTENSION = ".json.xz"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,7 +27,7 @@ def main(idmun: int) -> None:
     with Pool(WORKERS) as executor:
         for current_date in daterange(start_date, END_DATE):
             if not STORE and os.path.exists(
-                response_folder / f"{current_date}.json.xz"
+                response_folder / f"{current_date}{EXTENSION}"
             ):
                 logging.debug(f"Skipping {current_date}")
                 continue
@@ -59,7 +60,7 @@ def fetch_data(single_date: date, idmun: int = 0) -> dict:
     """
 
     response_folder = FILES_PATH / str(idmun) if idmun else FILES_PATH
-    response_path = response_folder / f"{single_date}.json.xz"
+    response_path = response_folder / f"{single_date}{EXTENSION}"
 
     if not os.path.isdir(response_folder):
         os.mkdir(response_folder)
